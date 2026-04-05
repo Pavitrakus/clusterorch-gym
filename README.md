@@ -73,3 +73,48 @@ Agents aren't limited to a single observation. Before diagnosing, they can query
 
 ```python
 # Reset to a scenario
+POST /reset {"task_id": "ib_link_flap"}
+# → Returns initial NCCL error log, done=false
+
+# Investigate — request IB port counters
+POST /step {"action_type": "investigate", "query": "infiniband counters"}
+# → Returns: symbol_err_count, link_downed, port_rcv_errors per node, done=false
+
+# Investigate further — check the transceiver
+POST /step {"action_type": "investigate", "query": "cable diagnostics"}
+# → Returns: QSFP28 temp 72°C, TX/RX power levels, done=false
+
+# Diagnose and fix
+POST /step {
+  "action_type": "fix",
+  "diagnosis": "Overheating QSFP28 transceiver on Node 2 Port 1 causing thermal link flapping",
+  "root_cause": "Cable temp 72°C exceeds 65°C threshold, causing IB link_downed events",
+  "fix": "Replace QSFP28 module on Node 2 ib0 Port 1. Interim: reduce airflow obstruction. Monitor with: watch -n5 'mlxlink -d mlx5_0 -e -i 1'",
+  "severity": "high"
+}
+# → Returns: simulated post-fix bandwidth test, score=0.80, done=true
+```
+
+Single-step diagnosis also works — the multi-step flow is optional. Backward compatible.
+
+---
+
+## Baseline Scores
+
+Tested with `meta-llama/Llama-3.3-70B-Instruct` via HuggingFace Inference API using the full multi-step investigation flow:
+
+| Task | Difficulty | Domain | Baseline Score | Notes |
+|------|-----------|--------|----------------|-------|
+| `local_nvlink` | 🟢 Easy | Networking | **0.88** | P2P easy to catch; NUMA needs investigation step |
+| `ring_straggler` | 🟡 Medium | Networking | **0.72** | Investigation isolates rank 47 quickly |
+| `ib_link_flap` | 🟡 Medium | Networking | **0.75** | Must query cable temp — not in initial log |
+| `cuda_oom_fragmentation` | 🟡 Medium | Memory | **0.65** | Models know OOM but struggle with allocator config syntax |
+| `checkpoint_corruption` | 🟡 Medium | Storage | **0.60** | Needs to read the distributed barrier sequence carefully |
+| `cross_dc_deadlock` | 🔴 Hard | Networking | **0.55** | Models say "timeout" not "deadlock"; miss IFNAME |
+| `nccl_config_drift` | 🔴 Hard | Configuration | **0.45** | Finding all 4 mismatches in one pass is rare |
+| `grad_accum_mismatch` | 🔴 Hard | Correctness | **0.35** | Hardest — models rarely link loss plateau to step mismatch |
+
+Scores above 0.60 require genuine semantic understanding of distributed systems failure modes. Pure keyword-stuffing peaks around 0.30 on hard tasks.
+
+---
+
