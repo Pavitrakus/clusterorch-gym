@@ -28,3 +28,27 @@ tasks:
     description: "Fix CUDA OOM caused by memory fragmentation despite 53% free memory"
     max_score: 1.0
   - id: checkpoint_corruption
+    difficulty: medium
+    description: "Diagnose sudden loss spikes due to checkpoint save race condition"
+    max_score: 1.0
+  - id: cross_dc_deadlock
+    difficulty: hard
+    description: "Resolve a deadlock in cross-datacenter weight synchronization"
+    max_score: 1.0
+  - id: nccl_config_drift
+    difficulty: hard
+    description: "Fix NCCL configuration drift across 16 nodes causing 17% efficiency"
+    max_score: 1.0
+  - id: grad_accum_mismatch
+    difficulty: hard
+    description: "Resolve missing training convergence due to node accumulation mismatches"
+    max_score: 1.0
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  health: GET /health
+runtime:
+  max_inference_minutes: 20
+  min_memory_gb: 2
+  requires_gpu: false
