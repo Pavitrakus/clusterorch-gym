@@ -183,3 +183,31 @@ docker run -p 7860:7860 -e HF_TOKEN=$HF_TOKEN clusterorch-gym
 - **Simulated logs** — hand-crafted to match real `NCCL_DEBUG=INFO` format but static. A production version would hook into live telemetry from actual clusters.
 - **Keyword grading** — deterministic and reproducible, but can theoretically be gamed by flooding keywords. In practice, frontier models don't do this.
 - **Single-agent** — real cluster debugging involves multiple engineers coordinating. Multi-agent coordination would be interesting v2.
+- **8 scenarios** — covers the most common networking, memory, storage, and correctness failures. Doesn't cover everything (mixed precision NaN propagation, RDMA registration failures, etc.).
+
+---
+
+## Architecture
+
+```
+┌─────────────────┐     POST /reset, /step      ┌──────────────────────┐
+│   AI Agent      │ ─────────────────────────▶  │  ClusterOrch-Gym     │
+│  (any LLM via   │ ◀─────────────────────────  │  FastAPI Server      │
+│   OpenAI API)   │   Observation + Score        │  port 7860           │
+└─────────────────┘                             └──────────┬───────────┘
+                                                           │
+                                              ┌────────────▼────────────┐
+                                              │  8 Task Scenarios        │
+                                              │  • Simulated NCCL logs   │
+                                              │  • Investigation data     │
+                                              │  • Deterministic graders  │
+                                              └─────────────────────────┘
+```
+
+---
+
+## License
+
+MIT — do whatever you want with it.
+
+Built by Pavitra Kushwaha.
