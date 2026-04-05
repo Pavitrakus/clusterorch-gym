@@ -467,3 +467,40 @@ def grade_grad_accum_mismatch(action: dict) -> dict:
     score = _floor_score(score, combined + fix)
     return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.40, "feedback": ". ".join(fb)}
 
+
+# ───────────────────────────────────────────────────────────
+# registry
+# ───────────────────────────────────────────────────────────
+
+TASKS = {
+    "local_nvlink": TASK_LOCAL_NVLINK,
+    "ring_straggler": TASK_RING_STRAGGLER,
+    "ib_link_flap": TASK_IB_LINK_FLAP,
+    "cross_dc_deadlock": TASK_CROSS_DC_DEADLOCK,
+    "nccl_config_drift": TASK_NCCL_CONFIG_DRIFT,
+    "cuda_oom_fragmentation": TASK_CUDA_OOM_FRAG,
+    "checkpoint_corruption": TASK_CHECKPOINT_CORRUPTION,
+    "grad_accum_mismatch": TASK_GRAD_ACCUM_MISMATCH,
+}
+
+GRADERS = {
+    "local_nvlink": grade_local_nvlink,
+    "ring_straggler": grade_ring_straggler,
+    "ib_link_flap": grade_ib_link_flap,
+    "cross_dc_deadlock": grade_cross_dc_deadlock,
+    "nccl_config_drift": grade_nccl_config_drift,
+    "cuda_oom_fragmentation": grade_cuda_oom_frag,
+    "checkpoint_corruption": grade_checkpoint_corruption,
+    "grad_accum_mismatch": grade_grad_accum_mismatch,
+}
+
+
+def get_task_list() -> list[dict]:
+    return [
+        {"task_id": t["task_id"], "difficulty": t["difficulty"],
+         "description": t["description"], "max_score": 1.0,
+         "category": t["context"].get("category", "networking")}
+        for t in TASKS.values()
+    ]
+
+
