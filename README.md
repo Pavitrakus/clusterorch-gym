@@ -118,3 +118,38 @@ Scores above 0.60 require genuine semantic understanding of distributed systems 
 
 ---
 
+## Grading
+
+All graders are **deterministic keyword heuristics with partial credit**. Same input, same score. Always.
+
+Scoring dimensions per task:
+- **Issue identification** — did the agent name the actual root cause?
+- **Specificity** — did it name the right rank, node, variable, or error code?
+- **Fix quality** — is the proposed remediation correct and actionable?
+- **Reasoning** — does the explanation demonstrate understanding of *why* the fix works?
+- **Severity assessment** — appropriate urgency rating?
+
+Floor: `0.05` for any non-empty response that contains relevant text (RL needs signal even on bad attempts).
+Ceiling: `1.0` for perfect diagnosis + correct specific fix + correct severity + clear reasoning.
+
+No binary pass/fail. No LLM-as-judge variance. Fully reproducible across runs.
+
+---
+
+## Run it locally
+
+```bash
+git clone https://github.com/YOUR_USERNAME/clusterorch-gym
+cd clusterorch-gym
+pip install -r requirements.txt
+
+# Start the environment server
+uvicorn app:app --host 0.0.0.0 --port 7860
+
+# Run the full benchmark (set your API keys first)
+export HF_TOKEN=your_token_here
+export API_BASE_URL=https://router.huggingface.co/v1
+export MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct
+python inference.py
+
+# Run pre-submission validation (21 checks)
