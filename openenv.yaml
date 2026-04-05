@@ -1,0 +1,30 @@
+name: clusterorch-gym
+version: "1.0.0"
+description: "RL environment for training AI agents to diagnose and remediate failures in distributed GPU training clusters. Covers NVLink misconfiguration, straggler detection, InfiniBand link flapping, cross-datacenter deadlocks, and NCCL configuration drift."
+author: "Pavitra Kushwaha"
+email: "pavitra@paxus.in"
+license: "MIT"
+tags:
+  - openenv
+  - distributed-training
+  - infrastructure
+  - nccl
+  - reinforcement-learning
+tasks:
+  - id: local_nvlink
+    difficulty: easy
+    description: "Diagnose NVLink bandwidth degradation on a single node"
+    max_score: 1.0
+  - id: ring_straggler
+    difficulty: medium
+    description: "Identify and remediate a straggler GPU in a 256-GPU ring"
+    max_score: 1.0
+  - id: ib_link_flap
+    difficulty: medium
+    description: "Diagnose intermittent InfiniBand link flapping in a 128-GPU cluster"
+    max_score: 1.0
+  - id: cuda_oom_fragmentation
+    difficulty: medium
+    description: "Fix CUDA OOM caused by memory fragmentation despite 53% free memory"
+    max_score: 1.0
+  - id: checkpoint_corruption
