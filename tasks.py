@@ -58,3 +58,30 @@ NCCL WARN Abnormal bandwidth detected on ring topology""",
     },
     "post_fix": {
         "correct": "[POST-FIX] Applied: export NCCL_P2P_DISABLE=0 && numactl rebind\n[POST-FIX] Re-running allreduce benchmark...\nallreduce_perf: 8 x 8.00 GB: Avg bus bandwidth: 378.4 GB/s (peak: 400.0 GB/s, efficiency: 94.6%)\nIMPROVEMENT: 187.3 → 378.4 GB/s (+102%)\nStatus: RESOLVED",
+        "partial": "[POST-FIX] Applied: export NCCL_P2P_DISABLE=0\n[POST-FIX] Re-running allreduce benchmark...\nallreduce_perf: 8 x 8.00 GB: Avg bus bandwidth: 312.1 GB/s (peak: 400.0 GB/s, efficiency: 78.0%)\nIMPROVEMENT: 187.3 → 312.1 GB/s (+67%) — NUMA mismatch still present\nStatus: PARTIALLY RESOLVED",
+        "wrong": "[POST-FIX] Applied changes.\n[POST-FIX] Re-running allreduce benchmark...\nallreduce_perf: 8 x 8.00 GB: Avg bus bandwidth: 191.2 GB/s (efficiency: 47.8%)\nIMPROVEMENT: 187.3 → 191.2 GB/s (+2%)\nStatus: NOT RESOLVED — root cause still present",
+    },
+}
+
+def grade_local_nvlink(action: dict) -> dict:
+    diag = action.get("diagnosis", "") + " " + action.get("root_cause", "")
+    fix = action.get("fix", "")
+    sev = action.get("severity", "").lower().strip()
+    score = 0.0
+    fb = []
+    if _has_any(diag, ["p2p", "nccl_p2p_disable", "peer to peer", "p2p_disable"]):
+        score += 0.35; fb.append("Correctly identified P2P disabled (+0.35)")
+    else: fb.append("Missed P2P/NCCL_P2P_DISABLE issue")
+    if _has_any(diag, ["numa", "affinity", "memory access"]):
+        score += 0.20; fb.append("NUMA mismatch found (+0.20)")
+    fix_clean = _clean(fix)
+    if "nccl_p2p_disable" in fix_clean and ("0" in fix_clean or "enable" in fix_clean):
+        score += 0.30; fb.append("Correct fix: NCCL_P2P_DISABLE=0 (+0.30)")
+    elif _has_any(fix, ["p2p", "enable p2p", "unset nccl_p2p"]):
+        score += 0.15; fb.append("Partial fix: mentioned P2P (+0.15)")
+    if sev in ("high", "critical"): score += 0.15; fb.append(f"Severity {sev} (+0.15)")
+    score += _consistency_bonus(diag, fix, ["p2p", "numa", "disable"])
+    score = _floor_score(score, diag + fix + sev)
+    return {"score": score, "found_issue": score >= 0.35, "correct_fix": score >= 0.65, "feedback": ". ".join(fb)}
+
+
