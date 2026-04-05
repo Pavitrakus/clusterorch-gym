@@ -287,3 +287,183 @@ def grade_nccl_config_drift(action: dict) -> dict:
     return {"score": score, "found_issue": score >= 0.20, "correct_fix": score >= 0.45, "feedback": ". ".join(fb)}
 
 
+# ───────────────────────────────────────────────────────────
+# TASK 6 — cuda_oom_fragmentation (medium)   [MEMORY]
+# OOM crash despite 53% GPU memory free
+# ───────────────────────────────────────────────────────────
+
+TASK_CUDA_OOM_FRAG = {
+    "task_id": "cuda_oom_fragmentation", "difficulty": "medium",
+    "description": "GPU 3 crashes with OOM despite 42.8 GB free (53% of 80 GB). The allocation request is only 2.4 GB. Find out why and fix.",
+    "context": {"num_gpus": 8, "gpu_type": "A100-80GB", "crash_gpu": 3,
+                "free_memory_gb": 42.8, "requested_gb": 2.4, "category": "memory_management"},
+    "log": """[2024-03-16 14:22:01] Training step 4521 - forward pass complete
+[2024-03-16 14:22:02] Training step 4521 - backward pass starting
+[2024-03-16 14:22:02] [GPU 3] RuntimeError: CUDA out of memory.
+  Tried to allocate 2.40 GiB (GPU 3; 80.00 GiB total; 37.18 GiB allocated; 42.82 GiB free)
+[2024-03-16 14:22:02] [GPU 3] torch.cuda.memory_summary():
+  |  Allocated:  37.18 GiB  (847 blocks)
+  |  Free:       42.82 GiB  (312 fragments)
+  |  Largest free block: 1.82 GiB
+  |  Total fragments: 312 (avg size: 137 MB)
+[2024-03-16 14:22:02] [GPU 3] Allocation pattern: dynamic shapes from variable-length sequences
+  batch_size=dynamic (4-64 seqs), seq_len=128-8192 tokens
+[2024-03-16 14:22:03] [GPU 0-2,4-7] No OOM - largest free block: 12.4+ GiB
+[2024-03-16 14:22:03] GPU 3 receives longest sequences (8192 tokens) due to length-sorted batching
+PYTORCH_CUDA_ALLOC_CONF: not set (using defaults)
+torch.cuda.max_memory_allocated(3): 72.4 GiB (of 80 GiB)""",
+    "investigations": {
+        "memory": "GPU 3 memory breakdown:\n  Model params: 18.2 GiB (fixed)\n  Activations: 12.4 GiB (varies with seq_len)\n  Gradients: 6.6 GiB (varies)\n  312 free fragments, largest = 1.82 GiB\n  Need 2.4 GiB contiguous but no single block is large enough.",
+        "config": "PYTORCH_CUDA_ALLOC_CONF: not set\nAvailable options:\n  expandable_segments:True — allows coalescing fragments\n  max_split_size_mb:512 — prevents excessive splitting\n  garbage_collection_threshold:0.6 — triggers GC earlier\nNone of these are enabled.",
+        "pattern": "Allocation timeline GPU 3:\n  Step 4500: peak 71.2 GiB, 412 blocks\n  Step 4510: peak 73.8 GiB, 623 blocks\n  Step 4520: peak 72.4 GiB, 847 blocks\nBlock count increasing = fragmentation growing.\nDynamic tensor shapes create many small free gaps.",
+        "default": "Available: memory breakdown, allocator config, allocation pattern",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Set PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:512\n[POST-FIX] Restarted training from checkpoint...\nGPU 3: 847 blocks → 124 blocks, largest free: 28.4 GiB\nStep 4521 backward pass completed successfully.\nStatus: RESOLVED",
+        "partial": "[POST-FIX] Set max_split_size_mb:512\n[POST-FIX] Fragmentation reduced but still OOM on step 4589.\nStatus: PARTIALLY RESOLVED — expandable_segments needed too",
+        "wrong": "[POST-FIX] Changes applied.\n[POST-FIX] Still OOM on step 4521.\nStatus: NOT RESOLVED",
+    },
+}
+
+def grade_cuda_oom_frag(action: dict) -> dict:
+    diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    sev = action.get("severity", "").lower().strip(); combined = diag + " " + root; score = 0.0; fb = []
+    if _has_any(combined, ["fragment", "fragmented", "fragmentation"]):
+        score += 0.30; fb.append("Identified memory fragmentation (+0.30)")
+    elif _has_any(combined, ["oom", "out of memory", "contiguous"]):
+        score += 0.10; fb.append("Identified OOM without fragmentation root cause (+0.10)")
+    if _has_any(combined, ["dynamic", "variable", "seq_len", "sequence length", "varying"]):
+        score += 0.15; fb.append("Identified dynamic shapes as cause (+0.15)")
+    if _has_any(fix, ["expandable_segments", "expandable segments"]):
+        score += 0.30; fb.append("Correct fix: expandable_segments (+0.30)")
+    elif _has_any(fix, ["max_split_size", "split_size"]):
+        score += 0.15; fb.append("Partial fix: max_split_size (+0.15)")
+    elif _has_any(fix, ["pytorch_cuda_alloc_conf", "alloc_conf"]):
+        score += 0.10; fb.append("Mentioned allocator config (+0.10)")
+    if sev in ("high", "critical"): score += 0.15; fb.append(f"Severity {sev} (+0.15)")
+    score += _consistency_bonus(diag, fix, ["fragment", "dynamic", "alloc"])
+    score = _floor_score(score, combined + fix + sev)
+    return {"score": score, "found_issue": score >= 0.30, "correct_fix": score >= 0.45, "feedback": ". ".join(fb)}
+
+
+# ───────────────────────────────────────────────────────────
+# TASK 7 — checkpoint_corruption (medium)   [STORAGE]
+# loss spikes after checkpoint resume
+# ───────────────────────────────────────────────────────────
+
+TASK_CHECKPOINT_CORRUPTION = {
+    "task_id": "checkpoint_corruption", "difficulty": "medium",
+    "description": "After resuming from checkpoint at step 100k, loss spikes from 2.1 to 14.7. One shard is corrupted. Find which rank and why.",
+    "context": {"num_gpus": 64, "num_nodes": 2, "checkpoint_step": 100000,
+                "pre_resume_loss": 2.1, "post_resume_loss": 14.7, "category": "storage"},
+    "log": """[2024-03-17 09:00:01] Resuming training from checkpoint step 100000
+[2024-03-17 09:00:02] Loading model shards: 64 files, 480 GiB total
+[2024-03-17 09:00:05] [rank 0-2,4-63] Shard loaded, checksum OK
+[2024-03-17 09:00:05] [rank 3] Shard loaded, checksum MISMATCH
+  Expected: 0xa3f2c819, Got: 0xb41e7d03
+  File: /shared/ckpt/step_100000/rank_003.pt (7.5 GiB)
+  File mtime: 2024-03-16 23:47:12 (during active training)
+[2024-03-17 09:00:06] WARNING: Proceeding despite checksum mismatch (no strict mode)
+[2024-03-17 09:00:10] Step 100001: loss = 14.72 (expected: ~2.1)
+[2024-03-17 09:00:15] Step 100002: loss = 13.89
+[2024-03-17 09:00:20] Step 100003: loss = 14.21 (not recovering)
+[2024-03-17 09:00:20] [rank 3] weight norm: 0.0023 (other ranks: 2.41-2.58)
+[2024-03-17 09:00:20] [rank 3] gradient norm: 847.2 (other ranks: 1.2-1.8)
+Checkpoint save log from 2024-03-16 23:47:
+  23:47:10 AllReduce step 99999 in progress
+  23:47:11 Checkpoint save triggered (async, no barrier)
+  23:47:12 [rank 3] saving shard... (AllReduce still running)
+  23:47:14 [rank 3] shard saved (weights may be mid-update)
+  23:47:15 AllReduce step 99999 completed""",
+    "investigations": {
+        "checkpoint": "Checkpoint save sequence:\n  1. No dist.barrier() before save\n  2. rank 3 saved during active AllReduce\n  3. Weights were mid-gradient-update when serialized\n  4. Other ranks finished AllReduce before saving\nThis is a race condition in the checkpoint logic.",
+        "rank": "[rank 3] weight stats after resume:\n  mean: 0.0003 (expected: 0.42)\n  std: 0.0001 (expected: 0.12)\n  weight_norm: 0.0023 (expected: ~2.5)\nRank 3 weights are essentially zeroed out.",
+        "loss": "Loss trajectory:\n  Step 99998: 2.08\n  Step 99999: 2.11\n  Step 100001: 14.72 ← resumed from corrupted checkpoint\n  Step 100002: 13.89\nLoss is not recovering — corrupted weights propagating through AllReduce.",
+        "default": "Available: checkpoint save log, rank 3 analysis, loss trajectory",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Added dist.barrier() before checkpoint save + checksum validation\n[POST-FIX] Restored from step 99500 (last clean checkpoint)\n[POST-FIX] Step 99501: loss = 2.14 (healthy)\nStatus: RESOLVED",
+        "partial": "[POST-FIX] Added strict checksum validation.\n[POST-FIX] Still need to restore from earlier checkpoint.\nStatus: PARTIALLY RESOLVED",
+        "wrong": "[POST-FIX] Changes applied.\n[POST-FIX] Loss still at 14.2 — corrupted weights still loaded.\nStatus: NOT RESOLVED",
+    },
+}
+
+def grade_checkpoint_corruption(action: dict) -> dict:
+    diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    sev = action.get("severity", "").lower().strip(); combined = diag + " " + root; score = 0.0; fb = []
+    if _has_any(combined, ["corrupt", "checksum", "mismatch", "stale", "mid-update"]):
+        score += 0.25; fb.append("Identified checkpoint corruption (+0.25)")
+    if "3" in combined or "rank 3" in combined.lower():
+        score += 0.15; fb.append("Identified rank 3 (+0.15)")
+    if _has_any(combined, ["barrier", "race condition", "no sync", "async save", "during allreduce"]):
+        score += 0.25; fb.append("Root cause: no barrier before save (+0.25)")
+    if _has_any(fix, ["barrier", "dist.barrier", "synchronize", "sync before"]):
+        score += 0.20; fb.append("Fix: add barrier (+0.20)")
+    if _has_any(fix, ["checksum", "validate", "verify", "strict"]):
+        score += 0.10; fb.append("Checksum validation (+0.10)")
+    if sev in ("high", "critical"): score += 0.10; fb.append(f"Severity {sev} (+0.10)")
+    score += _consistency_bonus(diag, fix, ["barrier", "checksum", "rank 3"])
+    score = _floor_score(score, combined + fix + sev)
+    return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.45, "feedback": ". ".join(fb)}
+
+
+# ───────────────────────────────────────────────────────────
+# TASK 8 — gradient_accumulation_mismatch (hard)  [CORRECTNESS]
+# training doesn't converge — different accum steps
+# ───────────────────────────────────────────────────────────
+
+TASK_GRAD_ACCUM_MISMATCH = {
+    "task_id": "grad_accum_mismatch", "difficulty": "hard",
+    "description": "Training loss plateaus at 4.2 and never converges. 256 GPUs. Effective batch size varies across nodes. Find root cause.",
+    "context": {"num_gpus": 256, "num_nodes": 8, "gpus_per_node": 32,
+                "expected_loss": 1.5, "observed_loss": 4.2, "category": "training_correctness"},
+    "log": """[2024-03-18 10:00:01] Distributed training: 256 GPUs, 8 nodes, FSDP
+[2024-03-18 10:00:01] Target learning rate: 3e-4, warmup: 2000 steps
+[2024-03-18 10:00:02] Per-node config scan:
+  Nodes 0-3: GRADIENT_ACCUMULATION_STEPS=4, micro_batch=16, effective_batch=256
+  Nodes 4-7: GRADIENT_ACCUMULATION_STEPS=8, micro_batch=16, effective_batch=512
+[2024-03-18 10:00:02] WARNING: effective_batch_size varies across nodes
+[2024-03-18 10:30:01] Step 2000: loss = 3.84 (expected: ~3.2 at this step)
+[2024-03-18 11:00:01] Step 4000: loss = 4.21 (expected: ~2.4)
+[2024-03-18 11:30:01] Step 6000: loss = 4.18 (plateau, not converging)
+[2024-03-18 11:30:02] Gradient norm analysis:
+  Nodes 0-3 avg grad_norm: 1.24 (normal)
+  Nodes 4-7 avg grad_norm: 0.61 (half of nodes 0-3)
+[2024-03-18 11:30:02] Learning rate: 3e-4 (constant after warmup)
+[2024-03-18 11:30:03] AllReduce averaging gradients across ALL 256 GPUs
+  But nodes 4-7 accumulated 8 steps vs 4 steps → their gradients are double-counted
+  Effective LR for nodes 4-7: 1.5e-4 (half of intended)""",
+    "investigations": {
+        "config": "Environment variable dump:\nNodes 0-3: GRADIENT_ACCUMULATION_STEPS=4 (set by launch script v2.1)\nNodes 4-7: GRADIENT_ACCUMULATION_STEPS=8 (set by launch script v2.0)\nNodes 4-7 still using old launch script with doubled accumulation.\nThis was not caught because training still 'runs' — it just doesn't converge.",
+        "gradient": "Gradient analysis:\n  Nodes 0-3 sync every 4 micro-batches → grad_norm ~1.24\n  Nodes 4-7 sync every 8 micro-batches → grad_norm ~0.61\n  After AllReduce, gradients are AVERAGED across all ranks.\n  But nodes 4-7 contribute 'stale' gradients from more accumulation.\n  Result: gradient direction is inconsistent → loss doesn't converge.",
+        "loss": "Loss comparison (isolated):\n  If all nodes used ACCUM=4: converges to 1.5 by step 10k\n  If all nodes used ACCUM=8: converges to 1.6 by step 12k\n  Mixed (current): plateaus at 4.2, never converges.\nThe mismatch is worse than either setting alone.",
+        "default": "Available: config dump, gradient analysis, loss comparison",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Set GRADIENT_ACCUMULATION_STEPS=4 on ALL nodes\n[POST-FIX] Restarted from step 6000 checkpoint\nStep 6500: loss = 3.92\nStep 7000: loss = 3.41\nStep 8000: loss = 2.87 (converging!)\nStatus: RESOLVED",
+        "partial": "[POST-FIX] Set uniform accumulation but didn't restart.\nStep 6001: loss = 4.19 (stale optimizer state)\nStatus: PARTIALLY RESOLVED — need optimizer state reset",
+        "wrong": "[POST-FIX] Changes applied.\nStep 6001: loss = 4.22\nStatus: NOT RESOLVED",
+    },
+}
+
+def grade_grad_accum_mismatch(action: dict) -> dict:
+    diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    combined = diag + " " + root; score = 0.0; fb = []
+    if _has_any(combined, ["accumulation", "accum", "gradient_accumulation", "batch size"]):
+        score += 0.25; fb.append("Identified gradient accumulation issue (+0.25)")
+    if _has_any(combined, ["mismatch", "inconsistent", "different", "4 vs 8", "varies"]):
+        score += 0.20; fb.append("Identified mismatch across nodes (+0.20)")
+    if _has_any(combined, ["converge", "plateau", "direction", "effective lr", "learning rate"]):
+        score += 0.10; fb.append("Explained convergence impact (+0.10)")
+    if _has_any(fix, ["uniform", "same", "consistent", "all nodes", "standardize"]):
+        score += 0.15; fb.append("Fix: unify accumulation (+0.15)")
+    if _has_any(fix, ["gradient_accumulation_steps=4", "accum=4", "accumulation=4", "set to 4"]):
+        score += 0.20; fb.append("Specific fix: ACCUM=4 (+0.20)")
+    elif _has_any(fix, ["gradient_accumulation_steps", "launch script"]):
+        score += 0.10; fb.append("Mentioned setting (+0.10)")
+    if _has_any(fix, ["restart", "reset optimizer", "fresh"]):
+        score += 0.10; fb.append("Restart from checkpoint (+0.10)")
+    score += _consistency_bonus(diag, fix, ["accumulation", "mismatch", "uniform"])
+    score = _floor_score(score, combined + fix)
+    return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.40, "feedback": ". ".join(fb)}
+
