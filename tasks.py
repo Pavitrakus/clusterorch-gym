@@ -133,3 +133,55 @@ def grade_ring_straggler(action: dict) -> dict:
     return {"score": score, "found_issue": score >= 0.30, "correct_fix": score >= 0.60, "feedback": ". ".join(fb)}
 
 
+# ───────────────────────────────────────────────────────────
+# TASK 3 — ib_link_flap (medium)
+# ───────────────────────────────────────────────────────────
+
+TASK_IB_LINK_FLAP = {
+    "task_id": "ib_link_flap", "difficulty": "medium",
+    "description": "Diagnose intermittent training slowdowns in a 128-GPU cluster. AllReduce spikes from 12s to 85s every 5-10 minutes.",
+    "context": {"num_gpus": 128, "num_nodes": 4, "gpus_per_node": 32,
+                "topology": "Fat-tree", "interconnect": "InfiniBand HDR"},
+    "log": """[2024-03-15 05:20:01] Training step 12001 started
+[2024-03-15 05:20:13] [rank 0] AllReduce completed in 12.3s
+[2024-03-15 05:24:18] Training step 12002 started
+[2024-03-15 05:25:41] [rank 64] NCCL WARN NET/IB : Got completion with error 12, opcode 0, len 0, vendor err 129
+[2024-03-15 05:25:41] [rank 64] NCCL INFO NET/IB : Recovering from link error
+[2024-03-15 05:25:43] [rank 0] AllReduce completed in 85.2s (expected: ~12s)
+[2024-03-15 05:30:14] [rank 0] AllReduce completed in 12.8s (recovered)
+[2024-03-15 05:36:52] [rank 64] NCCL WARN NET/IB : Got completion with error 12, vendor err 129
+[2024-03-15 05:36:53] [rank 0] AllReduce completed in 94.1s
+Node 2 ib0 port counters:
+  symbol_err_count: 48271
+  link_downed: 17
+  link_error_recovery: 17
+  port_rcv_errors: 3841
+All other nodes ib0: all error counters at 0
+Cable: Node 2, Port 1: QSFP28, vendor: GenericFiber, temp: 72°C (threshold: 65°C)""",
+    "investigations": {
+        "ib": "Node 2 ib0 detailed:\n  symbol_err_count: 48271 (increasing ~500/min)\n  link_downed: 17 events in last hour\n  link_error_recovery: 17\nAll other nodes: 0 errors.",
+        "cable": "Cable diagnostics Node 2 Port 1:\n  Type: QSFP28 100G\n  Temperature: 72°C (WARNING: above 65°C threshold)\n  TX Power: -2.1 dBm (marginal)\n  RX Power: -4.8 dBm (low)\nOther cables: all within normal range.",
+        "timing": "AllReduce timing last 20 steps:\n  Normal: 12.1-12.8s\n  Spikes: 85-94s (7x slower)\nCorrelates with link_error_recovery events on Node 2.",
+        "default": "Available: infiniband counters, cable diagnostics, timing analysis",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Replaced QSFP28 cable on Node 2 Port 1\n[POST-FIX] New cable temp: 38°C, all counters reset to 0\nAllReduce 20 consecutive steps: 11.8-12.4s (no spikes)\nStatus: RESOLVED",
+        "partial": "[POST-FIX] Reseated cable. Temp dropped to 58°C.\nAllReduce spikes reduced but still occurring every ~30min.\nStatus: PARTIALLY RESOLVED — cable degraded, needs replacement",
+        "wrong": "[POST-FIX] Changes applied.\nAllReduce still spiking to 85s+ every 5-10min.\nStatus: NOT RESOLVED",
+    },
+}
+
+def grade_ib_link_flap(action: dict) -> dict:
+    diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    sev = action.get("severity", "").lower().strip(); combined = diag + " " + root; score = 0.0; fb = []
+    if _has_any(combined, ["flap", "flapping", "link error", "intermittent", "symbol error", "link_downed"]):
+        score += 0.25; fb.append("Identified link flapping (+0.25)")
+    if _has_any(combined, ["node 2", "rank 64", "port 1"]):
+        score += 0.25; fb.append("Identified Node 2/rank 64 (+0.25)")
+    if _has_any(fix, ["replace cable", "cable", "transceiver", "temperature", "cooling", "qsfp", "swap"]):
+        score += 0.30; fb.append("Correct fix: cable replacement (+0.30)")
+    if sev in ("high", "critical"): score += 0.20; fb.append(f"Severity {sev} (+0.20)")
+    score = _floor_score(score, combined + fix + sev)
+    return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.50, "feedback": ". ".join(fb)}
+
+
