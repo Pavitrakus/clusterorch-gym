@@ -504,3 +504,34 @@ def get_task_list() -> list[dict]:
     ]
 
 
+def get_investigation(task_id: str, query: str) -> str:
+    inv = TASKS.get(task_id, {}).get("investigations", {})
+    if not inv:
+        return "No investigation data available for this task."
+    q = query.lower()
+    for key, response in inv.items():
+        if key == "default":
+            continue
+        if key in q or any(word in q for word in key.split()):
+            return response
+    return inv.get("default", "Try: " + ", ".join(k for k in inv.keys() if k != "default"))
+
+
+def get_post_fix_simulation(task_id: str, fix_text: str) -> dict:
+    """Simulate applying a fix and return post-fix observation + quality level."""
+    task = TASKS.get(task_id, {})
+    pf = task.get("post_fix", {})
+    if not pf:
+        return {"quality": "unknown", "observation": "No post-fix simulation available."}
+
+    fix_lower = fix_text.lower()
+    grader = GRADERS.get(task_id)
+    if grader:
+        # use grader score to determine fix quality
+        result = grader({"diagnosis": "", "root_cause": "", "fix": fix_text, "severity": ""})
+        fix_score = result["score"]
+        if fix_score >= 0.30:
+            return {"quality": "correct", "observation": pf.get("correct", "")}
+        elif fix_score >= 0.10:
+            return {"quality": "partial", "observation": pf.get("partial", "")}
+    return {"quality": "wrong", "observation": pf.get("wrong", "")}
