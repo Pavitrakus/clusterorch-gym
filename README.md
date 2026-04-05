@@ -153,3 +153,33 @@ export MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct
 python inference.py
 
 # Run pre-submission validation (21 checks)
+python validate.py
+```
+
+### Docker
+```bash
+docker build -t clusterorch-gym .
+docker run -p 7860:7860 -e HF_TOKEN=$HF_TOKEN clusterorch-gym
+```
+
+---
+
+## API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Dashboard (browser) / environment metadata (API) |
+| `GET` | `/health` | Instant health check — always < 100ms |
+| `GET` | `/tasks` | All 8 scenarios with difficulty and domain metadata |
+| `GET` | `/state` | Current episode state |
+| `POST` | `/reset` | Start a new episode, returns initial NCCL log observation |
+| `POST` | `/step` | Submit `investigate` or `fix` action, get graded result |
+| `GET` | `/docs` | Interactive Swagger docs |
+
+---
+
+## Known limitations
+
+- **Simulated logs** — hand-crafted to match real `NCCL_DEBUG=INFO` format but static. A production version would hook into live telemetry from actual clusters.
+- **Keyword grading** — deterministic and reproducible, but can theoretically be gamed by flooding keywords. In practice, frontier models don't do this.
+- **Single-agent** — real cluster debugging involves multiple engineers coordinating. Multi-agent coordination would be interesting v2.
