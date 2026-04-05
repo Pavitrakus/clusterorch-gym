@@ -185,3 +185,52 @@ def grade_ib_link_flap(action: dict) -> dict:
     return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.50, "feedback": ". ".join(fb)}
 
 
+# ───────────────────────────────────────────────────────────
+# TASK 4 — cross_dc_deadlock (hard)
+# ───────────────────────────────────────────────────────────
+
+TASK_CROSS_DC_DEADLOCK = {
+    "task_id": "cross_dc_deadlock", "difficulty": "hard",
+    "description": "Resolve a deadlock in cross-datacenter weight sync. 1536 GPUs across 3 DCs hanging for 3 hours with no error.",
+    "context": {"num_gpus": 1536, "num_datacenters": 3, "model_params": "1T", "hang_duration_hours": 3},
+    "log": """[2024-03-15 11:00:01] Cross-DC weight sync initiated
+[2024-03-15 11:00:01] DC1 (IB): ranks 0-511, fabric: mlx5_0, RDMA enabled
+[2024-03-15 11:00:01] DC2 (TCP): ranks 512-1023, interface: eth0, RTT: 45ms
+[2024-03-15 11:00:01] DC3 (TCP): ranks 1024-1535, interface: eth0, RTT: 67ms
+[2024-03-15 11:00:02] [rank 0] ncclSend(rank 512, 1.2TB) queued
+[2024-03-15 11:00:02] [rank 512] ncclSend(rank 0, 1.2TB) queued
+[2024-03-15 11:00:02] [rank 0] waiting for recv from rank 512...
+[2024-03-15 11:00:02] [rank 512] waiting for recv from rank 0...
+[2024-03-15 14:03:17] NCCL_IB_TIMEOUT: 14 (current), recommended: 22
+[2024-03-15 14:03:17] NCCL_SOCKET_IFNAME: not set
+[2024-03-15 14:03:17] [rank 0] still waiting... (10933s elapsed)
+No crash. No error. Both ranks waiting on each other forever.""",
+    "investigations": {
+        "rank": "[rank 0] State: BLOCKED on ncclRecv from rank 512\n[rank 512] State: BLOCKED on ncclRecv from rank 0\nBoth ranks queued a Send BEFORE posting a Recv.\nClassic circular dependency.",
+        "network": "DC1<->DC2 RTT: 45ms, bandwidth: 25 Gbps\nDC1<->DC3 RTT: 67ms, bandwidth: 10 Gbps\nNCCL_IB_TIMEOUT=14 (too low for 45ms+ RTT)",
+        "deadlock": "Deadlock analysis:\n1. rank 0: ncclSend(512) -> waiting ncclRecv(512)\n2. rank 512: ncclSend(0) -> waiting ncclRecv(0)\nTextbook circular wait. Fix: ensure send/recv ordering or hierarchical comm.",
+        "default": "Available: rank status, network topology, deadlock analysis",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Applied: hierarchical comm with intra-DC reduce first\n[POST-FIX] Send/recv ordering fixed: recv posted before send\n[POST-FIX] Cross-DC sync completed in 23.4s\nStatus: RESOLVED",
+        "partial": "[POST-FIX] NCCL_IB_TIMEOUT increased to 22\n[POST-FIX] Timeout no longer triggers but deadlock persists.\nStatus: NOT RESOLVED — ordering issue not addressed",
+        "wrong": "[POST-FIX] Changes applied.\n[POST-FIX] Still hanging after 300s.\nStatus: NOT RESOLVED",
+    },
+}
+
+def grade_cross_dc_deadlock(action: dict) -> dict:
+    diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    sev = action.get("severity", "").lower().strip(); combined = diag + " " + root; score = 0.0; fb = []
+    if _has_any(diag, ["deadlock", "dead lock", "dead-lock"]): score += 0.25; fb.append("Identified deadlock (+0.25)")
+    elif _has_any(diag, ["hang", "stuck", "blocked"]): score += 0.10; fb.append("Partial: hang not deadlock (+0.10)")
+    send_recv = ["send recv", "sendrecv", "both sending", "circular wait", "send before recv", "ordering"]
+    if any(kw in _clean(combined) for kw in send_recv): score += 0.25; fb.append("Send/recv ordering (+0.25)")
+    if any(kw in fix.lower() for kw in ["hierarchical", "intra-dc", "two-phase", "two phase", "local first"]):
+        score += 0.25; fb.append("Fix: hierarchical comm (+0.25)")
+    if _has_any(fix, ["nccl_socket_ifname", "socket_ifname", "eth0", "mlx5"]):
+        score += 0.15; fb.append("NCCL_SOCKET_IFNAME (+0.15)")
+    if sev == "critical": score += 0.10; fb.append("Severity critical (+0.10)")
+    score = _floor_score(score, combined + fix + sev)
+    return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.50, "feedback": ". ".join(fb)}
+
+
