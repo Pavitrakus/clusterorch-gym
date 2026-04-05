@@ -153,3 +153,55 @@ class ClusterOrchEnv:
 app = FastAPI(title="ClusterOrch-Gym", version="1.0.0",
               description="RL environment for AI agents to diagnose distributed GPU training failures")
 env = ClusterOrchEnv()
+
+
+@app.get("/")
+def root(request: Request):
+    """Serves dashboard for browsers, JSON for API clients"""
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept:
+        return HTMLResponse(content=DASHBOARD_HTML)
+    from fastapi.responses import JSONResponse
+    return JSONResponse(content={"name": "clusterorch-gym",
+            "description": "RL environment for training AI agents to diagnose and remediate failures in distributed GPU training clusters",
+            "version": "1.0.0", "author": "Pavitra Kushwaha", "tasks": len(TASKS)})
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/tasks")
+def list_tasks():
+    return get_task_list()
+
+
+@app.get("/state")
+def get_state():
+    return env.state()
+
+
+@app.post("/reset")
+def reset(body: ResetRequest = ResetRequest()):
+    """Reset environment to a task. Returns Observation with NCCL log."""
+    try:
+        return env.reset(task_id=body.task_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reset error: {str(e)}")
+
+
+@app.post("/step")
+def step(action: Action):
+    """Submit diagnosis or investigation. Returns StepResult with score 0.0-1.0."""
+    try:
+        return env.step(action)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Step error: {str(e)}")
+
+
+# ── dashboard HTML ──────────────────────────────────────
