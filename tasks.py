@@ -29,3 +29,32 @@ def _consistency_bonus(diag: str, fix: str, keywords: list[str]) -> float:
     return min(0.05 * matches, 0.10)
 
 
+# ───────────────────────────────────────────────────────────
+# TASK 1 — local_nvlink (easy)
+# ───────────────────────────────────────────────────────────
+
+TASK_LOCAL_NVLINK = {
+    "task_id": "local_nvlink", "difficulty": "easy",
+    "description": "Diagnose NVLink bandwidth degradation on a single 8-GPU node achieving only 46.8% of theoretical bandwidth.",
+    "context": {"num_gpus": 8, "topology": "NVLink", "node_type": "DGX A100",
+                "expected_bandwidth_gbps": 400.0, "observed_bandwidth_gbps": 187.3},
+    "log": """[2024-03-15 02:34:11] [rank 0] NCCL INFO NCCL version 2.18.3+cuda12.2
+[2024-03-15 02:34:11] [rank 0] NCCL INFO NET/Plugin: No plugin found
+[2024-03-15 02:34:11] [rank 0] NCCL INFO Using network Socket
+[2024-03-15 02:34:11] [rank 0] NCCL INFO NCCL_P2P_DISABLE set by environment to 1
+[2024-03-15 02:34:12] [rank 0] NCCL INFO Channel 00 : 0[0] -> 1[1] -> 2[2] -> 3[3] -> 4[4] -> 5[5] -> 6[6] -> 7[7]
+[2024-03-15 02:34:13] [rank 0] NCCL INFO AllReduce: algo: Ring, protocol: LL
+[2024-03-15 02:34:14] allreduce_perf: 8 x 8.00 GB: Avg bus bandwidth: 187.3 GB/s (peak: 400.0 GB/s, efficiency: 46.8%)
+[2024-03-15 02:34:14] WARNING: P2P disabled, falling back to SHM transport
+[2024-03-15 02:34:14] NUMA node for GPU 0: 0, process affinity: 1
+[2024-03-15 02:34:14] NUMA node for GPU 4: 1, process affinity: 0
+NCCL WARN Abnormal bandwidth detected on ring topology""",
+    "investigations": {
+        "nvidia-smi": "GPU 0: A100-SXM4-80GB, 42C, 85W/400W, Util: 23%\nGPU 1: A100-SXM4-80GB, 41C, 82W/400W, Util: 22%\nGPU 2-7: similar low utilization (21-24%)\nAll GPUs healthy, no ECC errors.",
+        "nccl": "NCCL_P2P_DISABLE=1\nNCCL_SHM_DISABLE=0\nNCCL_ALGO=Ring\nNCCL_PROTO=LL\nNCCL_DEBUG=INFO\nNCCL_IB_DISABLE=1\nNote: P2P is explicitly disabled, forcing shared memory transport.",
+        "numa": "GPU 0 -> NUMA node 0, Process affinity: NUMA 1 (MISMATCH)\nGPU 1 -> NUMA node 0, Process affinity: NUMA 0 (OK)\nGPU 4 -> NUMA node 1, Process affinity: NUMA 0 (MISMATCH)\nGPU 5 -> NUMA node 1, Process affinity: NUMA 1 (OK)\n2 of 8 GPUs have NUMA affinity mismatch.",
+        "bandwidth": "NVLink bandwidth test (nvidia-smi nvlink -s):\nGPU0<->GPU1: 42.1 GB/s (expected: 50 GB/s)\nGPU0<->GPU4: 18.3 GB/s (expected: 50 GB/s) ← DEGRADED\nP2P paths are using SHM fallback instead of NVLink direct.",
+        "default": "Available: nvidia-smi, nccl config, numa topology, bandwidth test",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Applied: export NCCL_P2P_DISABLE=0 && numactl rebind\n[POST-FIX] Re-running allreduce benchmark...\nallreduce_perf: 8 x 8.00 GB: Avg bus bandwidth: 378.4 GB/s (peak: 400.0 GB/s, efficiency: 94.6%)\nIMPROVEMENT: 187.3 → 378.4 GB/s (+102%)\nStatus: RESOLVED",
