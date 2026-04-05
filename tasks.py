@@ -85,3 +85,51 @@ def grade_local_nvlink(action: dict) -> dict:
     return {"score": score, "found_issue": score >= 0.35, "correct_fix": score >= 0.65, "feedback": ". ".join(fb)}
 
 
+# ───────────────────────────────────────────────────────────
+# TASK 2 — ring_straggler (medium)
+# ───────────────────────────────────────────────────────────
+
+TASK_RING_STRAGGLER = {
+    "task_id": "ring_straggler", "difficulty": "medium",
+    "description": "Identify a straggler GPU in a 256-GPU ring. Training stalled 47 minutes. Find the bad rank and fix.",
+    "context": {"num_gpus": 256, "num_nodes": 8, "gpus_per_node": 32, "topology": "Ring",
+                "stall_duration_minutes": 47, "interconnect": "InfiniBand HDR"},
+    "log": """[2024-03-15 03:12:01] Training step 8432 started
+[2024-03-15 03:12:01] [rank 0] NCCL INFO AllReduce start, 2.4GB tensor
+[2024-03-15 03:12:01] [rank 47] NCCL INFO AllReduce start, 2.4GB tensor
+[2024-03-15 03:58:44] [rank 0] NCCL WARN Timeout waiting for rank 47
+[2024-03-15 03:58:44] [rank 47] NCCL INFO NET : Send : 4 [ERROR 12] Connection reset by peer
+[2024-03-15 03:58:44] [rank 47] NCCL WARN Timeout on send to rank 48
+[2024-03-15 03:58:45] [rank 0] Collective Communication Time: 2847.3s (expected: ~45s)
+[2024-03-15 03:58:45] NCCL ERROR AllReduce failed with error 5 (Internal error)
+Node 5 (ranks 128-159): ib0 interface showing packet_seq_err: 847293
+Topology: Ring algorithm, all-to-all pattern across 8 nodes
+Current NCCL_ALGO=RING, NCCL_PROTO=Simple""",
+    "investigations": {
+        "rank": "[rank 47] Last successful send: step 8431 (46min ago)\n[rank 47] Send queue depth: 847 (should be 0)\n[rank 47] Retry count: 12847\n[rank 46] Waiting on recv from rank 47\n[rank 48] Waiting on send from rank 47",
+        "ib": "Node 5 ib0 counters:\n  port_rcv_errors: 847293\n  packet_seq_err: 847293\n  symbol_err_count: 12841\n  link_error_recovery: 3\n  link_downed: 0\nAll other nodes: all counters at 0.",
+        "topology": "Ring: 0->1->...->46->47->48->...->255->0\nRank 47 between rank 46 and 48.\nIn Ring, ALL data must pass through every rank.\nTree algorithm would create bypass paths.",
+        "default": "Available: rank status, infiniband counters, topology details",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Applied: export NCCL_ALGO=Tree && isolated rank 47\n[POST-FIX] Re-running training step...\nAllReduce completed in 41.2s (expected: ~45s)\nTraining resumed successfully. Step 8432 → 8433 in 42s.\nStatus: RESOLVED",
+        "partial": "[POST-FIX] Applied: export NCCL_ALGO=Tree\n[POST-FIX] Tree bypasses rank 47 but NIC still degraded.\nAllReduce completed in 58.3s (expected: ~45s)\nStatus: PARTIALLY RESOLVED — rank 47 NIC still needs replacement",
+        "wrong": "[POST-FIX] Changes applied.\n[POST-FIX] AllReduce still timing out at 2800s.\nStatus: NOT RESOLVED",
+    },
+}
+
+def grade_ring_straggler(action: dict) -> dict:
+    diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    combined = diag + " " + root; score = 0.0; fb = []
+    if "47" in root or "47" in diag: score += 0.30; fb.append("Identified rank 47 (+0.30)")
+    if _has_any(combined, ["straggler", "timeout", "nic", "infiniband", "packet", "ib0"]):
+        score += 0.25; fb.append("Good diagnosis (+0.25)")
+    if _has_any(fix, ["tree", "nccl_algo=tree", "isolate rank", "exclude rank"]):
+        score += 0.30; fb.append("Fix: TREE or isolate rank (+0.30)")
+    if any(kw in fix.lower() for kw in ["bypass", "tolerate", "single point", "bottleneck"]):
+        score += 0.15; fb.append("Explained why TREE > RING (+0.15)")
+    score += _consistency_bonus(diag, fix, ["rank 47", "tree", "straggler"])
+    score = _floor_score(score, combined + fix)
+    return {"score": score, "found_issue": score >= 0.30, "correct_fix": score >= 0.60, "feedback": ". ".join(fb)}
+
+
