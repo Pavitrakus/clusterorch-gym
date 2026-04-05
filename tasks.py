@@ -234,3 +234,56 @@ def grade_cross_dc_deadlock(action: dict) -> dict:
     return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.50, "feedback": ". ".join(fb)}
 
 
+# ───────────────────────────────────────────────────────────
+# TASK 5 — nccl_config_drift (hard)
+# ───────────────────────────────────────────────────────────
+
+TASK_NCCL_CONFIG_DRIFT = {
+    "task_id": "nccl_config_drift", "difficulty": "hard",
+    "description": "Diagnose 17.4% efficiency in a 512-GPU cluster. Multiple node groups have conflicting NCCL configs.",
+    "context": {"num_gpus": 512, "num_nodes": 16, "observed_efficiency": 17.4, "expected_efficiency": 85.0},
+    "log": """[2024-03-15 08:15:01] Multi-node training initialization, 512 GPUs, 16 nodes
+[2024-03-15 08:15:01] NCCL config check across nodes:
+  Nodes 0-3:   NCCL_ALGO=RING,  NCCL_PROTO=LL,     NCCL_NET_GDR_LEVEL=5, NCCL_IB_HCA=mlx5_0
+  Nodes 4-7:   NCCL_ALGO=TREE,  NCCL_PROTO=Simple,  NCCL_NET_GDR_LEVEL=2, NCCL_IB_HCA=mlx5_0
+  Nodes 8-11:  NCCL_ALGO=RING,  NCCL_PROTO=LL128,   NCCL_NET_GDR_LEVEL=5, NCCL_IB_HCA=mlx5_1
+  Nodes 12-15: NCCL_ALGO=RING,  NCCL_PROTO=Simple,  NCCL_NET_GDR_LEVEL=5, NCCL_IB_HCA=mlx5_0
+[2024-03-15 08:15:02] WARNING: Mixed algorithms detected across ranks
+[2024-03-15 08:15:03] allreduce_perf: 512 x 2.0 GB: efficiency: 17.4%
+[2024-03-15 08:15:04] Nodes 8-11 using mlx5_1 (secondary HCA), other nodes using mlx5_0 (primary)
+[2024-03-15 08:15:04] GDR Level mismatch: nodes 4-7 at level 2 (host memory copy), others at level 5""",
+    "investigations": {
+        "config": "Per-node NCCL config dump:\nNodes 0-3:  ALGO=RING, PROTO=LL, GDR=5, HCA=mlx5_0  (engineer A)\nNodes 4-7:  ALGO=TREE, PROTO=Simple, GDR=2, HCA=mlx5_0  (engineer B)\nNodes 8-11: ALGO=RING, PROTO=LL128, GDR=5, HCA=mlx5_1  (engineer C)\nNodes 12-15: ALGO=RING, PROTO=Simple, GDR=5, HCA=mlx5_0 (default)\n4 different configurations!",
+        "gdr": "GDR levels:\n  Level 5 = NIC reads GPU memory directly (fastest)\n  Level 2 = data through host memory (2-3x slower)\nNodes 4-7 at GDR 2 bottleneck the cluster.",
+        "hca": "mlx5_0: Primary port, 200 Gbps spine switch\nmlx5_1: Secondary, 25 Gbps management network\nNodes 8-11 using MANAGEMENT network for training!",
+        "bandwidth": "Per-group:\n  Nodes 0-3: 178 GB/s\n  Nodes 4-7: 42 GB/s (GDR bottleneck)\n  Nodes 8-11: 22 GB/s (wrong HCA!)\n  Nodes 12-15: 165 GB/s",
+        "default": "Available: config dump, GDR analysis, HCA details, bandwidth breakdown",
+    },
+    "post_fix": {
+        "correct": "[POST-FIX] Unified config: ALGO=RING, PROTO=LL128, GDR=5, HCA=mlx5_0 on all nodes\n[POST-FIX] allreduce_perf: 512 x 2.0 GB: efficiency: 87.2%\nIMPROVEMENT: 17.4% → 87.2% (+401%)\nStatus: RESOLVED",
+        "partial": "[POST-FIX] Standardized ALGO across nodes but GDR/HCA still mixed.\nallreduce_perf: efficiency: 42.1%\nIMPROVEMENT: 17.4% → 42.1% (+142%)\nStatus: PARTIALLY RESOLVED",
+        "wrong": "[POST-FIX] Changes applied.\nallreduce_perf: efficiency: 19.1%\nStatus: NOT RESOLVED",
+    },
+}
+
+def grade_nccl_config_drift(action: dict) -> dict:
+    diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    combined = diag + " " + root; score = 0.0; fb = []
+    if _has_any(combined, ["mismatch", "inconsistent", "drift", "different config", "mixed"]):
+        score += 0.20; fb.append("Config inconsistency (+0.20)")
+    if _has_any(combined, ["algorithm", "nccl_algo", "protocol", "nccl_proto", "gdr", "hca", "mlx5"]):
+        score += 0.20; fb.append("Specific variable mismatches (+0.20)")
+    if _has_any(fix, ["uniform", "consistent", "same config", "standardize", "unify", "all nodes"]):
+        score += 0.25; fb.append("Standardize config (+0.25)")
+    fix_lower = fix.lower()
+    vals = ["ring" in fix_lower, "gdr" in fix_lower and "5" in fix_lower, "mlx5_0" in fix_lower]
+    if sum(vals) >= 2: score += 0.20; fb.append("Correct values (+0.20)")
+    elif sum(vals) >= 1: score += 0.10; fb.append("Partial values (+0.10)")
+    if _has_any(combined + " " + fix, ["gdr level 2", "host memory", "gpu direct"]):
+        score += 0.15; fb.append("GDR biggest impact (+0.15)")
+    elif _has_any(fix, ["mlx5_1", "wrong hca", "management network"]):
+        score += 0.15; fb.append("Wrong HCA critical (+0.15)")
+    score = _floor_score(score, combined + fix)
+    return {"score": score, "found_issue": score >= 0.20, "correct_fix": score >= 0.45, "feedback": ". ".join(fb)}
+
+
