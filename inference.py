@@ -50,3 +50,19 @@ Log excerpt (last 500 chars):
 
 Available investigations: {available}"""
 
+
+# ── stdout logging (official format) ────────────────────
+
+def log_start(task, env, model):
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+def log_step(step, action_str, reward, done, error=None):
+    err = error if error else "null"
+    d = "true" if done else "false"
+    print(f"[STEP] step={step} action={action_str} reward={reward:.2f} done={d} error={err}", flush=True)
+
+def log_end(success, steps, score, rewards):
+    s = "true" if success else "false"
+    r = ",".join(f"{x:.2f}" for x in rewards)
+    print(f"[END] success={s} steps={steps} score={score:.2f} rewards={r}", flush=True)
+
