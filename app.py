@@ -378,3 +378,53 @@ in distributed GPU training clusters. Real NCCL logs. Deterministic grading. Par
 </div>
 </div></div>
 
+<div class="section">
+<h2 class="section-title">Tasks</h2>
+<div class="tasks-grid">
+<div class="task-card"><div class="task-header"><span class="task-id">local_nvlink</span>
+<span class="badge badge-easy">Easy</span></div>
+<p class="task-desc">Single 8-GPU node at 47% NVLink bandwidth. P2P disabled + NUMA affinity mismatch.</p></div>
+<div class="task-card"><div class="task-header"><span class="task-id">ring_straggler</span>
+<span class="badge badge-medium">Medium</span></div>
+<p class="task-desc">256-GPU ring stalled 47 min. Rank 47 has bad InfiniBand NIC blocking everyone.</p></div>
+<div class="task-card"><div class="task-header"><span class="task-id">ib_link_flap</span>
+<span class="badge badge-medium">Medium</span></div>
+<p class="task-desc">128-GPU cluster with intermittent slowdowns. Overheating cable causing IB link flapping.</p></div>
+<div class="task-card"><div class="task-header"><span class="task-id">cross_dc_deadlock</span>
+<span class="badge badge-hard">Hard</span></div>
+<p class="task-desc">1536 GPUs across 3 DCs. Silent deadlock — both ranks sending before receiving.</p></div>
+<div class="task-card"><div class="task-header"><span class="task-id">nccl_config_drift</span>
+<span class="badge badge-hard">Hard</span></div>
+<p class="task-desc">512-GPU cluster at 17% efficiency. 4 node groups with conflicting NCCL configs.</p></div>
+</div></div>
+<div class="section">
+<h2 class="section-title">Features</h2>
+<div class="feature-grid">
+<div class="feature"><div class="feature-icon">🔍</div><div class="feature-title">Multi-Step Investigation</div>
+<div class="feature-text">Agents can investigate before diagnosing — request GPU stats, IB counters, or topology details.</div></div>
+<div class="feature"><div class="feature-icon">📊</div><div class="feature-title">Partial Credit Scoring</div>
+<div class="feature-text">Graders award 0.0–1.0 based on diagnosis accuracy, fix quality, and severity assessment.</div></div>
+<div class="feature"><div class="feature-icon">🎯</div><div class="feature-title">Deterministic Grading</div>
+<div class="feature-text">Same input always produces same score. No LLM-as-judge. Fully reproducible.</div></div>
+<div class="feature"><div class="feature-icon">📋</div><div class="feature-title">Real NCCL Logs</div>
+<div class="feature-text">Logs match real NCCL_DEBUG=INFO output format from production GPU clusters.</div></div>
+</div></div>
+<div class="section">
+<h2 class="section-title">API Reference</h2>
+<table class="api-table">
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="method method-post">POST</span></td><td class="path">/reset</td><td>Reset environment to a task, get observation with NCCL log</td></tr>
+<tr><td><span class="method method-post">POST</span></td><td class="path">/step</td><td>Submit diagnosis or investigation, get graded result</td></tr>
+<tr><td><span class="method method-get">GET</span></td><td class="path"><a href="/state" target="_blank">/state</a></td><td>Current environment state</td></tr>
+<tr><td><span class="method method-get">GET</span></td><td class="path"><a href="/health" target="_blank">/health</a></td><td>Health check (instant, always fast)</td></tr>
+<tr><td><span class="method method-get">GET</span></td><td class="path"><a href="/tasks" target="_blank">/tasks</a></td><td>List all available tasks</td></tr>
+</table></div>
+<div class="section">
+<h2 class="section-title">Quick Start</h2>
+<div class="code-block">
+# Reset to a task<br>
+curl -X POST /reset -H "Content-Type: application/json" \\<br>
+&nbsp;&nbsp;-d '{"task_id": "local_nvlink"}'<br><br>
+# Submit a diagnosis<br>
+curl -X POST /step -H "Content-Type: application/json" \\<br>
+&nbsp;&nbsp;-d '{"diagnosis": "P2P disabled", "root_cause": "NCCL_P2P_DISABLE=1",<br>
