@@ -428,3 +428,33 @@ curl -X POST /reset -H "Content-Type: application/json" \\<br>
 # Submit a diagnosis<br>
 curl -X POST /step -H "Content-Type: application/json" \\<br>
 &nbsp;&nbsp;-d '{"diagnosis": "P2P disabled", "root_cause": "NCCL_P2P_DISABLE=1",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"fix": "export NCCL_P2P_DISABLE=0", "severity": "high"}'<br><br>
+# Or investigate first (multi-step)<br>
+curl -X POST /step -H "Content-Type: application/json" \\<br>
+&nbsp;&nbsp;-d '{"action_type": "investigate", "query": "show numa topology"}'
+</div></div>
+<div class="footer">
+<p>ClusterOrch-Gym v1.0.0 </p>
+<p style="margin-top:0.5rem">
+  <a href="/docs" style="color:var(--accent);text-decoration:none;margin-right:1.5rem">📖 Interactive API Docs</a>
+  <a href="/health" style="color:var(--green);text-decoration:none;margin-right:1.5rem">💚 Health</a>
+  <a href="/tasks" style="color:var(--cyan);text-decoration:none">📋 Tasks</a>
+</p>
+</div></div>
+
+<script>
+async function fetchEndpoint(path, panelId) {
+  const el = document.getElementById(panelId);
+  el.textContent = 'Loading...';
+  try {
+    const res = await fetch(path, {headers: {'Accept': 'application/json'}});
+    const data = await res.json();
+    el.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    el.textContent = 'Error: ' + err.message;
+  }
+}
+// auto-fetch health on load
+window.addEventListener('load', () => fetchEndpoint('/health', 'panel-health'));
+</script>
+</body></html>"""
