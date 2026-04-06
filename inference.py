@@ -146,3 +146,39 @@ def run_task(client, task_id):
 
         current_log = inv_result["observation"]["log"]
 
+    # 3. Diagnose + Fix (single step using "fix" action_type)
+    diag_prompt = f"""NCCL / training infrastructure log with investigation results:
+
+--- LOG START ---
+{current_log}
+--- LOG END ---
+
+Task: {obs['description']}
+
+Analyze carefully. Provide diagnosis as JSON."""
+
+    action = parse_diagnosis(call_llm(client, diag_prompt))
+
+    fix_resp = requests.post(f"{ENV_URL}/step", json={
+        "action_type": "fix",
+        "diagnosis": action["diagnosis"],
+        "root_cause": action["root_cause"],
+        "fix": action["fix"],
+        "severity": action["severity"],
+    })
+    fix_resp.raise_for_status()
+    result = fix_resp.json()
+
+    score = result["reward"]["score"]
+    fix_quality = result.get("info", {}).get("fix_quality", "unknown")
+    step_num += 1
+    rewards.append(score)
+
+    log_step(step=step_num, action_str=_fmt_action(action, "fix"),
+             reward=score, done=True)
+    log_end(success=score > 0.0, steps=step_num, score=score, rewards=rewards)
+
+    # stderr summary
+    print(f"#   {task_id}: score={score:.2f} fix_quality={fix_quality} steps={step_num}", file=sys.stderr)
+    return score
+
