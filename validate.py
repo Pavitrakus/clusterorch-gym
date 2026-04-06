@@ -53,3 +53,48 @@ def main():
         cwd=os.path.dirname(os.path.abspath(__file__)),
     )
 
+    try:
+        if not check("1. Server starts on port 7860", wait_for_server(proc)):
+            print("\n  Server failed to start. Aborting.")
+            proc.kill()
+            return
+
+        # health
+        r = requests.get(f"{BASE}/health")
+        check("2. GET /health returns 200 and status ok",
+              r.status_code == 200 and r.json().get("status") == "ok")
+
+        # root
+        r = requests.get(f"{BASE}/")
+        check("3. GET / returns 200", r.status_code == 200)
+
+        # tasks
+        r = requests.get(f"{BASE}/tasks")
+        tasks = r.json()
+        check("4. GET /tasks returns list with 8 tasks", r.status_code == 200 and len(tasks) >= 8)
+
+        # reset each task
+        for i, tid in enumerate(TASK_IDS, 5):
+            r = requests.post(f"{BASE}/reset", json={"task_id": tid})
+            d = r.json()
+            valid = r.status_code == 200 and "task_id" in d and "log" in d and len(d.get("log", "")) > 50
+            check(f"{i}. POST /reset task_id={tid} valid Observation", valid)
+
+        # step returns score 0-1
+        requests.post(f"{BASE}/reset", json={"task_id": "local_nvlink"})
+        action = {"diagnosis": "P2P disabled, NUMA mismatch", "root_cause": "NCCL_P2P_DISABLE=1",
+                  "fix": "export NCCL_P2P_DISABLE=0", "severity": "high"}
+        r = requests.post(f"{BASE}/step", json=action)
+        score = r.json().get("reward", {}).get("score", -1)
+        check("10. POST /step score between 0.0 and 1.0", 0.0 <= score <= 1.0, f"got {score}")
+
+        # score is float
+        check("11. Score is float not int/string", isinstance(score, float), f"type={type(score).__name__}")
+
+        # state
+        r = requests.get(f"{BASE}/state")
+        check("12. GET /state returns valid JSON", r.status_code == 200 and isinstance(r.json(), dict))
+
+        # grader variance
+        test_actions = [
+            {"diagnosis": "P2P disabled", "root_cause": "NCCL_P2P_DISABLE", "fix": "export NCCL_P2P_DISABLE=0", "severity": "high"},
