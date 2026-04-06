@@ -205,3 +205,46 @@ def step(action: Action):
 
 
 # ── dashboard HTML ──────────────────────────────────────
+
+DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClusterOrch-Gym — Distributed Training Diagnosis Environment</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0b14;--card:#12141f;--border:#1e2035;--text:#e2e8f0;--muted:#8892b0;
+--accent:#6366f1;--cyan:#06b6d4;--green:#22c55e;--orange:#f59e0b;--red:#ef4444;
+--glow:0 0 20px rgba(99,102,241,0.15)}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);
+min-height:100vh;overflow-x:hidden}
+.bg-grid{position:fixed;inset:0;background-image:
+linear-gradient(rgba(99,102,241,0.03) 1px,transparent 1px),
+linear-gradient(90deg,rgba(99,102,241,0.03) 1px,transparent 1px);
+background-size:60px 60px;pointer-events:none;z-index:0}
+
+/* ── top nav ─────────────────────────── */
+.topnav{position:sticky;top:0;z-index:10;padding:12px 2rem;
+background:rgba(10,11,20,0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);
+display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.topnav-brand{font-weight:700;font-size:1.1rem;display:flex;align-items:center;gap:8px}
+.topnav-brand span{background:linear-gradient(135deg,#fff,var(--accent));
+-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.topnav-links{display:flex;gap:6px;flex-wrap:wrap}
+.nav-link{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;
+font-size:0.8rem;font-weight:500;text-decoration:none;transition:all 0.2s ease;
+border:1px solid var(--border);color:var(--text);background:var(--card)}
+.nav-link:hover{border-color:var(--accent);background:rgba(99,102,241,0.08);color:#fff;
+box-shadow:var(--glow);transform:translateY(-1px)}
+.nav-link .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot-blue{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.dot-cyan{background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+.dot-orange{background:var(--orange);box-shadow:0 0 6px var(--orange)}
+.nav-link code{background:transparent;padding:0;font-size:0.75rem;color:var(--cyan)}
+
+.container{max-width:1100px;margin:0 auto;padding:2rem;position:relative;z-index:1}
+.hero{text-align:center;padding:2.5rem 0 1.5rem}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;
