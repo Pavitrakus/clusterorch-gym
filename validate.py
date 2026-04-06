@@ -98,3 +98,43 @@ def main():
         # grader variance
         test_actions = [
             {"diagnosis": "P2P disabled", "root_cause": "NCCL_P2P_DISABLE", "fix": "export NCCL_P2P_DISABLE=0", "severity": "high"},
+            {"diagnosis": "something wrong", "root_cause": "unknown", "fix": "restart", "severity": "low"},
+            {"diagnosis": "NUMA affinity", "root_cause": "NUMA mismatch", "fix": "fix pinning", "severity": "medium"},
+        ]
+        scores = []
+        for ta in test_actions:
+            requests.post(f"{BASE}/reset", json={"task_id": "local_nvlink"})
+            r = requests.post(f"{BASE}/step", json=ta)
+            scores.append(r.json()["reward"]["score"])
+        check("13. Grader returns different scores", len(set(scores)) >= 2, f"scores={scores}")
+
+        # multi-step investigation works
+        requests.post(f"{BASE}/reset", json={"task_id": "local_nvlink"})
+        r = requests.post(f"{BASE}/step", json={"action_type": "investigate", "query": "numa"})
+        inv = r.json()
+        check("14. Multi-step investigation works",
+              r.status_code == 200 and inv.get("done") == False and inv["reward"]["score"] == 0.0)
+
+        # test fix action
+        requests.post(f"{BASE}/reset", json={"task_id": "local_nvlink"})
+        r = requests.post(f"{BASE}/step", json={"action_type": "fix", "diagnosis": "test", "fix": "test_fix"})
+        fix_res = r.json()
+        check("14b. Fix action works and simulates result",
+              r.status_code == 200 and fix_res.get("done") == True and "info" in fix_res and "fix_quality" in fix_res["info"])
+
+        # openenv.yaml
+        yaml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "openenv.yaml")
+        check("15. openenv.yaml exists and valid YAML", os.path.exists(yaml_path))
+        if os.path.exists(yaml_path):
+            with open(yaml_path) as f:
+                meta = yaml.safe_load(f)
+            required = ["name", "version", "description", "author", "tasks", "endpoints", "runtime"]
+            check("16. openenv.yaml has all required fields",
+                  all(k in meta for k in required), f"missing: {[k for k in required if k not in meta]}")
+        else:
+            check("16. openenv.yaml has all required fields", False)
+
+        # files exist
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        check("17. Dockerfile exists", os.path.exists(os.path.join(root_dir, "Dockerfile")))
+        check("18. inference.py in root", os.path.exists(os.path.join(root_dir, "inference.py")))
