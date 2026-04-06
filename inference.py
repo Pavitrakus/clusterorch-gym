@@ -107,3 +107,42 @@ def parse_diagnosis(content):
             return m.group(1) if m else (content[:200] if f == "diagnosis" else "")
         return {k: extract(k) or ("medium" if k == "severity" else "") for k in ["diagnosis", "root_cause", "fix", "severity"]}
 
+
+# ── main loop ───────────────────────────────────────────
+
+def run_task(client, task_id):
+    # 1. Reset
+    reset_resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id})
+    reset_resp.raise_for_status()
+    obs = reset_resp.json()
+
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
+
+    step_num = 0
+    rewards = []
+    current_log = obs["log"]
+    available_investigations = "nvidia-smi, nccl config, numa topology, bandwidth test, infiniband counters, cable diagnostics, rank status, timing analysis, memory breakdown, checkpoint log, gradient analysis, loss comparison, config dump"
+
+    # 2. Investigate (multi-step)
+    for i in range(MAX_INVESTIGATE):
+        inv_prompt = INVESTIGATE_PROMPT.format(
+            log_tail=current_log[-500:], available=available_investigations)
+        query = call_llm(client, inv_prompt,
+                         system="You pick the best investigation query. Reply with ONLY the query.",
+                         max_tokens=50)
+        if not query:
+            query = "config"
+        query = query.strip().strip('"').strip("'")[:60]
+
+        inv_resp = requests.post(f"{ENV_URL}/step", json={
+            "action_type": "investigate", "query": query})
+        inv_resp.raise_for_status()
+        inv_result = inv_resp.json()
+
+        step_num += 1
+        rewards.append(0.0)
+        log_step(step=step_num, action_str=_fmt_action({"query": query}, "investigate"),
+                 reward=0.0, done=False)
+
+        current_log = inv_result["observation"]["log"]
+
