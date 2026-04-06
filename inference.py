@@ -75,3 +75,19 @@ def _fmt_action(action: dict, action_type: str = "fix") -> str:
     sev = action.get("severity", "medium")
     return f"{action_type}('{diag}',severity='{sev}')"
 
+
+# ── LLM interaction ─────────────────────────────────────
+
+def call_llm(client, prompt, system=SYSTEM_PROMPT, max_tokens=1024):
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": prompt}],
+            temperature=0.1, max_tokens=max_tokens,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"# LLM error: {e}", file=sys.stderr)
+        return None
+
