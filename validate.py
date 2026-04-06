@@ -173,3 +173,20 @@ def main():
     finally:
         proc.kill()
         proc.wait()
+
+    # summary
+    print("\n" + "=" * 60)
+    passed = sum(1 for _, p in RESULTS if p)
+    failed = len(RESULTS) - passed
+    print(f"PASSED: {passed}/{len(RESULTS)}")
+    print(f"FAILED: {failed}/{len(RESULTS)}")
+    if failed:
+        print("\nFailed checks:")
+        for name, p in RESULTS:
+            if not p:
+                print(f"  ✗ {name}")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
