@@ -91,3 +91,19 @@ def call_llm(client, prompt, system=SYSTEM_PROMPT, max_tokens=1024):
         print(f"# LLM error: {e}", file=sys.stderr)
         return None
 
+
+def parse_diagnosis(content):
+    if not content:
+        return {"diagnosis": "LLM unavailable", "root_cause": "API error",
+                "fix": "retry", "severity": "medium"}
+    content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.MULTILINE)
+    content = re.sub(r"```\s*$", "", content, flags=re.MULTILINE).strip()
+    try:
+        p = json.loads(content)
+        return {k: str(p.get(k, "")) for k in ["diagnosis", "root_cause", "fix", "severity"]}
+    except json.JSONDecodeError:
+        def extract(f):
+            m = re.search(rf'"{f}"\s*:\s*"([^"]*)"', content)
+            return m.group(1) if m else (content[:200] if f == "diagnosis" else "")
+        return {k: extract(k) or ("medium" if k == "severity" else "") for k in ["diagnosis", "root_cause", "fix", "severity"]}
+
