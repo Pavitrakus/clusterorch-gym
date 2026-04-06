@@ -182,3 +182,37 @@ Analyze carefully. Provide diagnosis as JSON."""
     print(f"#   {task_id}: score={score:.2f} fix_quality={fix_quality} steps={step_num}", file=sys.stderr)
     return score
 
+
+def main():
+    if not HF_TOKEN:
+        print("ERROR: HF_TOKEN not set", file=sys.stderr)
+        sys.exit(1)
+
+    client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+
+    try:
+        requests.get(f"{ENV_URL}/health", timeout=10).raise_for_status()
+    except Exception as e:
+        print(f"ERROR: Environment unreachable at {ENV_URL}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    scores = {}
+    for task_id in TASKS:
+        try:
+            scores[task_id] = run_task(client, task_id)
+        except Exception as e:
+            print(f"# Task {task_id} failed: {e}", file=sys.stderr)
+            log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
+            log_step(step=1, action_str="error()", reward=0.0, done=True, error=str(e))
+            log_end(success=False, steps=1, score=0.0, rewards=[0.0])
+            scores[task_id] = 0.0
+
+    total = sum(scores.values()) / len(scores) if scores else 0.0
+    print(f"\n# === Summary ===", file=sys.stderr)
+    for t, s in scores.items():
+        print(f"#   {t}: {s:.2f}", file=sys.stderr)
+    print(f"#   Average: {total:.2f}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
