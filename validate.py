@@ -138,3 +138,38 @@ def main():
         root_dir = os.path.dirname(os.path.abspath(__file__))
         check("17. Dockerfile exists", os.path.exists(os.path.join(root_dir, "Dockerfile")))
         check("18. inference.py in root", os.path.exists(os.path.join(root_dir, "inference.py")))
+
+        readme_path = os.path.join(root_dir, "README.md")
+        readme_ok = False
+        if os.path.exists(readme_path):
+            with open(readme_path, encoding="utf-8") as f:
+                content = f.read().lower()
+            readme_ok = "baseline" in content and ("score" in content or "|" in content)
+        check("19. README.md mentions baseline scores", readme_ok)
+
+        # all tasks complete
+        all_ok = True
+        for tid in TASK_IDS:
+            try:
+                requests.post(f"{BASE}/reset", json={"task_id": tid})
+                r = requests.post(f"{BASE}/step", json={"diagnosis": "test", "root_cause": "test",
+                                                         "fix": "test", "severity": "medium"})
+                if r.status_code != 200:
+                    all_ok = False
+            except Exception:
+                all_ok = False
+        check("20. All 8 tasks complete without crash", all_ok)
+
+        # grader variance across tasks (not just one task)
+        task_scores = []
+        for tid in ["local_nvlink", "cross_dc_deadlock", "nccl_config_drift"]:
+            requests.post(f"{BASE}/reset", json={"task_id": tid})
+            r = requests.post(f"{BASE}/step", json={"diagnosis": "generic issue", "root_cause": "something",
+                                                     "fix": "fix it", "severity": "medium"})
+            task_scores.append(r.json()["reward"]["score"])
+        check("21. Grader consistency: weak answers score low across tasks",
+              all(s <= 0.3 for s in task_scores), f"scores={task_scores}")
+
+    finally:
+        proc.kill()
+        proc.wait()
