@@ -66,3 +66,12 @@ def log_end(success, steps, score, rewards):
     r = ",".join(f"{x:.2f}" for x in rewards)
     print(f"[END] success={s} steps={steps} score={score:.2f} rewards={r}", flush=True)
 
+def _fmt_action(action: dict, action_type: str = "fix") -> str:
+    """Format action as function-style string for stdout (matches official sample)."""
+    if action_type == "investigate":
+        q = action.get("query", "")[:60].replace("'", "")
+        return f"investigate('{q}')"
+    diag = action.get("diagnosis", "")[:80].replace("'", "")
+    sev = action.get("severity", "medium")
+    return f"{action_type}('{diag}',severity='{sev}')"
+
