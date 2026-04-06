@@ -323,3 +323,58 @@ border-top:1px solid var(--border);margin-top:3rem}
 .feature-text{color:var(--muted);font-size:0.8rem;line-height:1.4}
 </style>
 </head>
+<body>
+<div class="bg-grid"></div>
+
+<!-- ── sticky top nav ─────────────────── -->
+<nav class="topnav">
+<div class="topnav-brand"><span>⚡ ClusterOrch-Gym</span></div>
+<div class="topnav-links">
+  <a href="/docs" class="nav-link" target="_blank"><span class="dot dot-blue"></span> API Docs <code>/docs</code></a>
+  <a href="/health" class="nav-link" target="_blank"><span class="dot dot-green"></span> Health <code>/health</code></a>
+  <a href="/tasks" class="nav-link" target="_blank"><span class="dot dot-cyan"></span> Tasks <code>/tasks</code></a>
+  <a href="/state" class="nav-link" target="_blank"><span class="dot dot-orange"></span> State <code>/state</code></a>
+</div>
+</nav>
+
+<div class="container">
+<div class="hero">
+<div class="hero-badge"><span class="pulse"></span> Environment Online — v1.0.0</div>
+<h1>ClusterOrch-Gym</h1>
+<p class="subtitle">OpenEnv RL environment where AI agents learn to diagnose and fix failures
+in distributed GPU training clusters. Real NCCL logs. Deterministic grading. Partial credit.</p>
+</div>
+<div class="stats">
+<div class="stat"><div class="stat-value">5</div><div class="stat-label">Tasks</div></div>
+<div class="stat"><div class="stat-value">3</div><div class="stat-label">Difficulties</div></div>
+<div class="stat"><div class="stat-value">1536</div><div class="stat-label">Max GPUs</div></div>
+<div class="stat"><div class="stat-value">∞</div><div class="stat-label">Episodes</div></div>
+</div>
+
+<!-- ── live endpoint panels ─────────── -->
+<div class="section">
+<h2 class="section-title">Live Endpoints</h2>
+<div class="live-grid">
+<div class="live-panel">
+  <div class="live-header">
+    <span class="live-title"><span class="dot dot-green"></span> GET /health</span>
+    <button class="live-btn" onclick="fetchEndpoint('/health','panel-health')">▶ Run</button>
+  </div>
+  <div class="live-body" id="panel-health">Click "Run" to fetch live response...</div>
+</div>
+<div class="live-panel">
+  <div class="live-header">
+    <span class="live-title"><span class="dot dot-cyan"></span> GET /tasks</span>
+    <button class="live-btn" onclick="fetchEndpoint('/tasks','panel-tasks')">▶ Run</button>
+  </div>
+  <div class="live-body" id="panel-tasks">Click "Run" to fetch live response...</div>
+</div>
+<div class="live-panel">
+  <div class="live-header">
+    <span class="live-title"><span class="dot dot-orange"></span> GET /state</span>
+    <button class="live-btn" onclick="fetchEndpoint('/state','panel-state')">▶ Run</button>
+  </div>
+  <div class="live-body" id="panel-state">Click "Run" to fetch live response...</div>
+</div>
+</div></div>
+
