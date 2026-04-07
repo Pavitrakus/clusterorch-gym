@@ -1,3 +1,13 @@
+---
+title: ClusterOrch Gym
+emoji: 🏢
+colorFrom: indigo
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # ClusterOrch-Gym 
 
 > The first reproducible RL benchmark for AI agents that debug distributed GPU training clusters.
