@@ -345,7 +345,7 @@ border-top:1px solid var(--border);margin-top:3rem}
 in distributed GPU training clusters. Real NCCL logs. Deterministic grading. Partial credit.</p>
 </div>
 <div class="stats">
-<div class="stat"><div class="stat-value">5</div><div class="stat-label">Tasks</div></div>
+<div class="stat"><div class="stat-value">8</div><div class="stat-label">Tasks</div></div>
 <div class="stat"><div class="stat-value">3</div><div class="stat-label">Difficulties</div></div>
 <div class="stat"><div class="stat-value">1536</div><div class="stat-label">Max GPUs</div></div>
 <div class="stat"><div class="stat-value">∞</div><div class="stat-label">Episodes</div></div>
