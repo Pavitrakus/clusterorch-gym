@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clusterorch-gym"
+version = "0.1.0"
+description = "RL benchmark for training AI agents to diagnose and remediate distributed GPU training failures"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn==0.30.0",
+    "pydantic==2.9.0",
+    "openai==1.12.0",
+    "python-dotenv==1.0.1",
+    "requests==2.32.3",
+    "httpx==0.27.0",
+    "pyyaml==6.0.2"
+]
