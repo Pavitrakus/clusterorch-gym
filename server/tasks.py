@@ -19,7 +19,8 @@ def _has_any(text: str, keywords: list[str]) -> bool:
 def _floor_score(score: float, combined_text: str) -> float:
     if len(combined_text.strip()) > 10:
         score = max(score, 0.05)
-    return round(min(score, 1.0), 2)
+    clamped = max(0.01, min(score, 0.99))
+    return round(clamped, 2)
 
 
 def _consistency_bonus(diag: str, fix: str, keywords: list[str]) -> float:
