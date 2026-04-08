@@ -9,7 +9,10 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional
 
-from tasks import TASKS, GRADERS, get_task_list, get_investigation, get_post_fix_simulation
+try:
+    from server.tasks import TASKS, GRADERS, get_task_list, get_investigation, get_post_fix_simulation
+except ImportError:
+    from tasks import TASKS, GRADERS, get_task_list, get_investigation, get_post_fix_simulation
 
 
 # ── pydantic models ─────────────────────────────────────
