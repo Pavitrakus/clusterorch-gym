@@ -17,8 +17,8 @@ def _has_any(text: str, keywords: list[str]) -> bool:
 
 
 def _floor_score(score: float, combined_text: str) -> float:
-    if score == 0.0 and len(combined_text.strip()) > 10:
-        return 0.05
+    if len(combined_text.strip()) > 10:
+        score = max(score, 0.05)
     return round(min(score, 1.0), 2)
 
 
@@ -120,16 +120,22 @@ Current NCCL_ALGO=RING, NCCL_PROTO=Simple""",
 
 def grade_ring_straggler(action: dict) -> dict:
     diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
+    sev = action.get("severity", "").lower().strip()
     combined = diag + " " + root; score = 0.0; fb = []
     if "47" in root or "47" in diag: score += 0.30; fb.append("Identified rank 47 (+0.30)")
     if _has_any(combined, ["straggler", "timeout", "nic", "infiniband", "packet", "ib0"]):
         score += 0.25; fb.append("Good diagnosis (+0.25)")
+    elif _has_any(combined, ["slow", "stall", "wait", "block", "error", "network", "ring", "connection"]):
+        score += 0.10; fb.append("Partial: generic networking terms (+0.10)")
     if _has_any(fix, ["tree", "nccl_algo=tree", "isolate rank", "exclude rank"]):
         score += 0.30; fb.append("Fix: TREE or isolate rank (+0.30)")
+    elif _has_any(fix, ["nccl", "replace", "switch", "algorithm", "restart"]):
+        score += 0.10; fb.append("Partial fix mention (+0.10)")
     if any(kw in fix.lower() for kw in ["bypass", "tolerate", "single point", "bottleneck"]):
         score += 0.15; fb.append("Explained why TREE > RING (+0.15)")
+    if sev in ("high", "critical"): score += 0.10; fb.append(f"Severity {sev} (+0.10)")
     score += _consistency_bonus(diag, fix, ["rank 47", "tree", "straggler"])
-    score = _floor_score(score, combined + fix)
+    score = _floor_score(score, combined + fix + sev)
     return {"score": score, "found_issue": score >= 0.30, "correct_fix": score >= 0.60, "feedback": ". ".join(fb)}
 
 
@@ -222,14 +228,22 @@ def grade_cross_dc_deadlock(action: dict) -> dict:
     diag = action.get("diagnosis", ""); root = action.get("root_cause", ""); fix = action.get("fix", "")
     sev = action.get("severity", "").lower().strip(); combined = diag + " " + root; score = 0.0; fb = []
     if _has_any(diag, ["deadlock", "dead lock", "dead-lock"]): score += 0.25; fb.append("Identified deadlock (+0.25)")
-    elif _has_any(diag, ["hang", "stuck", "blocked"]): score += 0.10; fb.append("Partial: hang not deadlock (+0.10)")
+    elif _has_any(diag, ["hang", "stuck", "blocked", "wait", "timeout"]): score += 0.10; fb.append("Partial: hang/wait (+0.10)")
+    elif _has_any(combined, ["network", "sync", "communication", "connection", "latency", "datacenter", "dc", "cross"]):
+        score += 0.05; fb.append("Generic networking terms (+0.05)")
     send_recv = ["send recv", "sendrecv", "both sending", "circular wait", "send before recv", "ordering"]
     if any(kw in _clean(combined) for kw in send_recv): score += 0.25; fb.append("Send/recv ordering (+0.25)")
     if any(kw in fix.lower() for kw in ["hierarchical", "intra-dc", "two-phase", "two phase", "local first"]):
         score += 0.25; fb.append("Fix: hierarchical comm (+0.25)")
+    elif _has_any(fix, ["barrier", "synchronize", "ordering", "sequence", "reorder"]):
+        score += 0.10; fb.append("Partial: synchronization fix (+0.10)")
+    elif _has_any(fix, ["nccl", "config", "export", "set", "env"]):
+        score += 0.05; fb.append("Generic config fix (+0.05)")
     if _has_any(fix, ["nccl_socket_ifname", "socket_ifname", "eth0", "mlx5"]):
         score += 0.15; fb.append("NCCL_SOCKET_IFNAME (+0.15)")
     if sev == "critical": score += 0.10; fb.append("Severity critical (+0.10)")
+    elif sev == "high": score += 0.08; fb.append("Severity high (+0.08)")
+    elif sev == "medium": score += 0.03; fb.append("Severity medium (+0.03)")
     score = _floor_score(score, combined + fix + sev)
     return {"score": score, "found_issue": score >= 0.25, "correct_fix": score >= 0.50, "feedback": ". ".join(fb)}
 
